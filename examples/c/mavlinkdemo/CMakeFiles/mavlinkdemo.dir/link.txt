@@ -1,0 +1,1 @@
+/usr/bin/cc -fPIC  -fvisibility=default -shared -Wl,-soname,libmavlinkdemo.so -o out/libmavlinkdemo.so CMakeFiles/mavlinkdemo.dir/mavlink_handler.c.o CMakeFiles/mavlinkdemo.dir/mavlink_handler_cmd.c.o CMakeFiles/mavlinkdemo.dir/mavlink_main.c.o CMakeFiles/mavlinkdemo.dir/mavlink_serial.c.o CMakeFiles/mavlinkdemo.dir/mavlink_udp.c.o CMakeFiles/mavlinkdemo.dir/mavlink_util.c.o 

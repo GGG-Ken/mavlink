@@ -21,7 +21,92 @@ void handle_heartbeat(const mavlink_message_t* message);
 void send_some(int socket_fd, const struct sockaddr_in* src_addr, socklen_t src_addr_len);
 void send_heartbeat(int socket_fd, const struct sockaddr_in* src_addr, socklen_t src_addr_len);
 
+#if 1
+#include <stdio.h>
+#include <string.h>
+#include <arpa/inet.h>
+#include <sys/socket.h>
 
+#ifdef _WIN32
+#include <Windows.h>
+#define close_socket(s) closesocket(s)
+#else
+#include <unistd.h>
+#define close_socket(s) close(s)
+#endif
+
+const int PORT = 12345;
+const char *SERVER_IP = "10.66.30.49"; // 如果其他设备想连接服务器，服务器的 IP 地址应该设置为其他设备可以访问的IP地址,不能选择本地回环地址
+// const char *SERVER_IP = "127.0.0.1"; // IP地址是 127.0.0.1（本地回环地址）时，只有本地设备可以连接到服务器,同一台电脑自发自收
+
+int main()
+{
+    // 创建 UDP 套接字
+    int serverSocket = socket(AF_INET, SOCK_DGRAM, 0);
+    if (serverSocket < 0)
+    {
+        fprintf(stderr, "Failed to create socket\n");
+        return 1;
+    }
+
+    // 绑定 IP 地址和端口号
+    struct sockaddr_in serverAddr;
+    memset(&serverAddr, 0, sizeof(serverAddr));
+    serverAddr.sin_family = AF_INET;
+    serverAddr.sin_addr.s_addr = inet_addr(SERVER_IP); // 你想要绑定的特定 IP 地址 可以正常运行
+    // serverAddr.sin_addr.s_addr = htonl(INADDR_ANY); // 使用任意可用的IP地址 可以正常运行
+
+    // 同一个电脑实现自发自收服务端和客户端也要相同的端口号
+    serverAddr.sin_port = htons(PORT); // 端口号 12345
+
+    if (bind(serverSocket, (struct sockaddr *)&serverAddr, sizeof(serverAddr)) < 0)
+    {
+        fprintf(stderr, "Bind failed\n");
+        return 1;
+    }
+
+    printf("UDPserver SERVER_IP=%s PORT=%d start, waiting for udpclient...\n", SERVER_IP, PORT);
+
+    // 设置接收超时
+    struct timeval tv;
+    tv.tv_sec = 100; // 设置超时时间为10秒 客户端接收超时设置（仅适用于Linux）
+    tv.tv_usec = 0;
+    setsockopt(serverSocket, SOL_SOCKET, SO_RCVTIMEO, (const char *)&tv, sizeof tv);
+
+    while (1)
+    {
+        // 接收消息
+        char buffer[1024];
+        struct sockaddr_in clientAddr;
+        socklen_t clientAddrSize = sizeof(clientAddr);
+
+        // 如果没有消息到达，recvfrom函数将会阻塞程序，直到有消息到达为止。
+        // int bytesReceived = recvfrom(serverSocket, buffer, sizeof(buffer), 0, (struct sockaddr *)&clientAddr, &clientAddrSize);
+        // if (bytesReceived < 0)
+        // {
+        //     fprintf(stderr, "Receive failed\n");
+        //     return 1;
+        // }
+
+        // buffer[bytesReceived] = '\0';
+        bool src_addr_set = false;
+        receive_some(serverSocket, &clientAddr, &clientAddrSize, &src_addr_set);
+        send_some(serverSocket, &clientAddr, clientAddrSize);
+        printf("Received message from %s: %s\n", inet_ntoa(clientAddr.sin_addr), buffer);
+
+        // 发送响应
+        const char *response = "Message received! from:server ken";
+        sendto(serverSocket, response, strlen(response), 0, (struct sockaddr *)&clientAddr, clientAddrSize);
+        usleep(1000 * 1000); // 延时 1 秒
+    }
+
+    // 关闭套接字（永远不会执行到这里）
+    close_socket(serverSocket);
+
+    return 0;
+}
+
+#else
 int main(int argc, char* argv[])
 {
     // Open UDP socket
@@ -37,7 +122,7 @@ int main(int argc, char* argv[])
     memset(&addr, 0, sizeof(addr));
     addr.sin_family = AF_INET;
     inet_pton(AF_INET, "0.0.0.0", &(addr.sin_addr)); // listen on all network interfaces
-    addr.sin_port = htons(14550); // default port on the ground
+    addr.sin_port = htons(12346); // default port on the ground
 
     if (bind(socket_fd, (struct sockaddr*)(&addr), sizeof(addr)) != 0) {
         printf("bind error: %s\n", strerror(errno));
@@ -54,11 +139,12 @@ int main(int argc, char* argv[])
         return -3;
     }
 
-    struct sockaddr_in src_addr = {};
-    socklen_t src_addr_len = sizeof(src_addr);
-    bool src_addr_set = false;
 
     while (true) {
+        struct sockaddr_in src_addr = {};
+        socklen_t src_addr_len = sizeof(src_addr);
+        bool src_addr_set = false;
+
         // For illustration purposes we don't bother with threads or async here
         // and just interleave receiving and sending.
         // This only works  if receive_some returns every now and then.
@@ -66,12 +152,19 @@ int main(int argc, char* argv[])
 
         if (src_addr_set) {
             send_some(socket_fd, &src_addr, src_addr_len);
+            const char *response = "Message received!";
+            int message_len = strlen(response);
+            int rest = sendto(socket_fd, response, strlen(response), 0, (struct sockaddr *)&src_addr, src_addr_len);
+            if (rest != message_len)
+            {
+                printf("sendto ret=%d message_len=%d error: %s --\n", rest, message_len, strerror(errno));
+           }
         }
     }
 
     return 0;
 }
-
+#endif 
 void receive_some(int socket_fd, struct sockaddr_in* src_addr, socklen_t* src_addr_len, bool* src_addr_set)
 {
     // We just receive one UDP datagram and then return again.
@@ -81,10 +174,10 @@ void receive_some(int socket_fd, struct sockaddr_in* src_addr, socklen_t* src_ad
             socket_fd, buffer, sizeof(buffer), 0, (struct sockaddr*)(src_addr), src_addr_len);
 
     if (ret < 0) {
-        printf("recvfrom error: %s\n", strerror(errno));
+        // printf("recvfrom error: %s\n", strerror(errno));
     } else if (ret == 0) {
         // peer has done an orderly shutdown
-        return;
+        // return;
     }
 
     *src_addr_set = true;
@@ -102,9 +195,18 @@ void receive_some(int socket_fd, struct sockaddr_in* src_addr, socklen_t* src_ad
             case MAVLINK_MSG_ID_HEARTBEAT:
                 handle_heartbeat(&message);
                 break;
+                default:
+                printf("===ggg FILE= %-40s FUNC= %-15s LINE= %-4d ===\n", 
+      __FILE__, __FUNCTION__, __LINE__ );
+                break;
             }
         }
+        printf("===ggg FILE= %-40s FUNC= %-15s LINE= %-4d ===ret=%d\n",
+               __FILE__, __FUNCTION__, __LINE__, ret);
     }
+    // printf("===ggg FILE= %-40s FUNC= %-15s LINE= %-4d ===ret=%d\n",
+    //        __FILE__, __FUNCTION__, __LINE__, ret);
+    return;
 }
 
 void handle_heartbeat(const mavlink_message_t* message)
@@ -161,11 +263,19 @@ void send_heartbeat(int socket_fd, const struct sockaddr_in* src_addr, socklen_t
 
     uint8_t buffer[MAVLINK_MAX_PACKET_LEN];
     const int len = mavlink_msg_to_send_buffer(buffer, &message);
+    const char *messageken = "send:Hello, server! from:client ken ken ";
+    int message_len = strlen(messageken);
+    int ret = 0;
+    ret = sendto(socket_fd, messageken, message_len, 0, (const struct sockaddr *)src_addr, src_addr_len);
 
-    int ret = sendto(socket_fd, buffer, len, 0, (const struct sockaddr*)src_addr, src_addr_len);
-    if (ret != len) {
-        printf("sendto error: %s\n", strerror(errno));
-    } else {
-        printf("Sent heartbeat\n");
+    // int ret = sendto(socket_fd, buffer, len, 0, (const struct sockaddr*)src_addr, src_addr_len);
+    if (ret != message_len)
+    // if (ret != len)
+    {
+        // printf("sendto ret=%d message_len=%d error: %s --len=%d\n", ret, message_len, strerror(errno), len);
+    }
+    else
+    {
+        // printf("Sent heartbeat\n");
     }
 }

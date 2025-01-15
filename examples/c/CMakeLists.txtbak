@@ -1,0 +1,69 @@
+cmake_minimum_required(VERSION 3.13)
+project(udp_example)
+
+# # 设置 C 和 C++ 标准
+set(CMAKE_C_STANDARD 11)
+set(CMAKE_CXX_STANDARD 11)
+######################################################
+# 查找 MAVLink 库
+# find_package(MAVLink REQUIRED)
+
+# 设置源文件目录
+set(MAVLink_DIR ${CMAKE_CURRENT_SOURCE_DIR}/mavlinkdemo)
+set(SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR})
+set(SUBSCRIPTION_DIR ${CMAKE_CURRENT_SOURCE_DIR}/mavlinkdemo/subscription)
+set(UTIL_DIR ${CMAKE_CURRENT_SOURCE_DIR}/mavlinkdemo/util)
+
+# 添加包含路径
+# include_directories(${CMAKE_CURRENT_SOURCE_DIR})  # 让编译器知道在哪查找 mavlink.h
+
+# 创建库
+file(GLOB SUBSCRIPTION_SOURCES ${SUBSCRIPTION_DIR}/*.cpp)
+file(GLOB UTIL_SOURCES ${UTIL_DIR}/*.c)
+file(GLOB MAVLINK_SOURCES ${MAVLink_DIR}/*.c)
+# file(GLOB MAVLINK_SOURCES /home/quan/share/mygithub/mavlink/examples/c/mavlink/*.c)
+
+message(STATUS "SRC_DIR: ${SRC_DIR}")
+message(STATUS "MAVLink_DIR: ${MAVLink_DIR}")
+message(STATUS "MAVLink_DIR: ${MAVLink_DIR}/*.c")
+message(STATUS "MAVLink_DIR: $/home/quan/share/mygithub/mavlink/examples/c/mavlink/*.c")
+message(STATUS "SUBSCRIPTION_DIR: ${SUBSCRIPTION_DIR}")
+
+#在src/utils目录中寻找CMakeLists.txt文件。在${CMAKE_CURRENT_BINARY_DIR}/utils目录中创建一个与src/utils对应的目录，用于存放src/utils目录中生成的二进制文件。执行src/utils/CMakeLists.txt中的命令。
+# add_subdirectory(c/mavlinkdemo ${CMAKE_CURRENT_BINARY_DIR}/utils)
+
+# 添加 mavlinkdemo 子目录
+# add_subdirectory(mavlinkdemo ${CMAKE_CURRENT_SOURCE_DIR}/mavlinkdemo)
+# add_subdirectory(mavlinkdemo)
+message(STATUS "${CMAKE_CURRENT_BINARY_DIR}/mavlinkdemo")
+message(STATUS "${CMAKE_CURRENT_SOURCE_DIR}/mavlinkdemo")
+
+# add_library(subscription SHARED ${SUBSCRIPTION_SOURCES})
+# add_library(util SHARED ${UTIL_SOURCES})
+# add_library(mavlink SHARED ${MAVLINK_SOURCES})
+
+# 添加可执行文件，并链接 MAVLink 库
+add_executable(udpclient ${SRC_DIR}/udpclient.cpp)
+add_executable(udpserver ${SRC_DIR}/udpserver.cpp)
+
+# examples/c/mavlinkdemo/out/libmavlinkdemo.so
+set(OUT_DIR ${CMAKE_CURRENT_SOURCE_DIR}/mavlinkdemo/out)
+# 链接库文件
+message(status "OUT_DIR: ${OUT_DIR}/libmavlinkdemo.so")
+
+# target_link_libraries(udpserver ${OUT_DIR}/libmavlinkdemo.so MAVLink::mavlink)
+file(GLOB SO_FILES ${OUT_DIR}/*.so)  # 查找第三方动态库文件
+foreach(so_file ${SO_FILES})
+    message(STATUS "ken Found SO :${so_file}")
+    target_link_libraries(udpserver mavlinkdemo)
+    # target_link_libraries(udpserver ${OUT_DIR})
+    # target_link_libraries(udpclient ${OUT_DIR})
+    target_link_libraries(udpclient mavlinkdemo)
+    # target_link_libraries(udpclient ${so_file})
+endforeach()
+
+# target_link_libraries(udpserver mavlinkdemo) 
+# target_link_libraries(udpclient ${OUT_DIR}/libmavlinkdemo.so MAVLink::mavlink)
+# target_link_libraries(udpclient mavlinkdemo) 
+
+
